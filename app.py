@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.express as px
 import requests
 import streamlit as st
+import streamlit.components.v2
 
 st.set_page_config(
     page_title="Derivados del petróleo",
@@ -61,7 +62,6 @@ st.markdown("""
     }
 
     /* Pestañas cómodas para tocar con el dedo */
-
     button[data-baseweb="tab"] {
         padding-left: .7rem;
         padding-right: .7rem;
@@ -264,13 +264,7 @@ st.caption(f"Fuente: JODI-Oil World Database. Media de los últimos 12 meses dis
 
 vol = df.groupby("Derivado")["mbd"].sum().sort_values(ascending=False)
 TODOS_DERIV = list(vol.index)
-TODOS_PAISES = sorted(df["País"].unique())
-CODIGOS_PAIS = (
-    df[["País", "Código"]]
-    .drop_duplicates("País")
-    .set_index("País")["Código"]
-    .to_dict()
-)
+TODOS_PAISES = sorted(df[df["puesto"] <= 15]["País"].unique())
 
 
 def reset():
@@ -299,16 +293,297 @@ st.sidebar.button("Actualizar datos ahora", on_click=st.cache_data.clear)
 
 usos_sel = st.sidebar.multiselect("Uso (vacío = todos)", CATEGORIAS, key="f_usos")
 deriv_sel = st.sidebar.multiselect("Derivados", TODOS_DERIV, key="f_deriv")
-# Filtro desplegable de países.
-# El valor interno sigue siendo el nombre del país, pero el usuario ve
-# únicamente la bandera en el desplegable y en las opciones seleccionadas.
-paises_sel = st.sidebar.multiselect(
-    "Países",
-    TODOS_PAISES,
-    key="f_paises",
-    format_func=lambda pais: bandera(CODIGOS_PAIS.get(pais, "")),
+# ---------------------------------------------------------------------------
+# Selector de países con banderas reales.
+# Streamlit multiselect solo permite etiquetas de texto; para mostrar imágenes
+# reales usamos un componente v2 inline con HTML/CSS/JavaScript.
+# ---------------------------------------------------------------------------
+PAISES_CODIGOS = (
+    df[["País", "Código"]]
+    .drop_duplicates()
+    .set_index("País")["Código"]
+    .to_dict()
+)
+CODIGO_PAIS = {codigo: pais for pais, codigo in PAISES_CODIGOS.items()}
+TODOS_CODIGOS = [PAISES_CODIGOS[p] for p in TODOS_PAISES if p in PAISES_CODIGOS]
+
+FLAG_SELECTOR_JS = r'''
+export default function({ parentElement, data, setStateValue }) {
+    const root = parentElement;
+    const button = root.querySelector("#flag-select-button");
+    const panel = root.querySelector("#flag-select-panel");
+    const flags = root.querySelector("#flag-select-flags");
+    const clear = root.querySelector("#flag-select-clear");
+
+    const options = data?.options ?? [];
+    let selected = Array.isArray(data?.selected) ? [...data.selected] : [];
+
+    const flagUrl = (code) => `https://flagcdn.com/w40/${String(code).toLowerCase()}.png`;
+    const same = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+
+    function render() {
+        flags.innerHTML = "";
+
+        for (const item of options) {
+            const code = item.code;
+            const label = item.label || code;
+            const wrap = document.createElement("button");
+            wrap.type = "button";
+            wrap.className = "flag-option" + (selected.includes(code) ? " selected" : "");
+            wrap.title = label;
+            wrap.setAttribute("aria-label", label);
+            wrap.setAttribute("aria-pressed", selected.includes(code) ? "true" : "false");
+
+            const img = document.createElement("img");
+            img.src = flagUrl(code);
+            img.alt = "";
+            img.loading = "lazy";
+            img.onerror = () => { img.style.display = "none"; };
+
+            wrap.appendChild(img);
+            wrap.onclick = () => {
+                if (selected.includes(code)) {
+                    selected = selected.filter(x => x !== code);
+                } else {
+                    selected = [...selected, code];
+                }
+                render();
+                setStateValue("selected", selected);
+            };
+            flags.appendChild(wrap);
+        }
+        renderSelected();
+    }
+
+    function renderSelected() {
+        const chosen = root.querySelector("#flag-select-chosen");
+        chosen.innerHTML = "";
+
+        if (!selected.length) {
+            const empty = document.createElement("span");
+            empty.className = "flag-placeholder";
+            empty.textContent = "Todos";
+            chosen.appendChild(empty);
+            return;
+        }
+
+        const visible = selected.slice(0, 7);
+        for (const code of visible) {
+            const img = document.createElement("img");
+            img.src = flagUrl(code);
+            img.alt = "";
+            chosen.appendChild(img);
+        }
+        if (selected.length > visible.length) {
+            const more = document.createElement("span");
+            more.className = "flag-more";
+            more.textContent = `+${selected.length - visible.length}`;
+            chosen.appendChild(more);
+        }
+    }
+
+    function syncFromPython() {
+        const incoming = Array.isArray(data?.selected) ? data.selected : [];
+        if (!same(selected, incoming)) {
+            selected = [...incoming];
+            render();
+        }
+    }
+
+    button.onclick = () => {
+        const open = panel.classList.toggle("open");
+        button.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+
+    clear.onclick = (event) => {
+        event.stopPropagation();
+        selected = [];
+        render();
+        setStateValue("selected", selected);
+    };
+
+    document.addEventListener("click", (event) => {
+        if (!root.contains(event.target)) {
+            panel.classList.remove("open");
+            button.setAttribute("aria-expanded", "false");
+        }
+    });
+
+    syncFromPython();
+    render();
+
+    return () => {};
+}
+'''
+
+FLAG_SELECTOR_HTML = r'''
+<div class="flag-selector">
+  <button id="flag-select-button" class="flag-select-button" type="button" aria-expanded="false">
+    <span id="flag-select-chosen" class="flag-select-chosen"></span>
+    <span class="flag-select-chevron">▾</span>
+    <span id="flag-select-clear" class="flag-select-clear" title="Borrar selección" aria-label="Borrar selección">×</span>
+  </button>
+  <div id="flag-select-panel" class="flag-select-panel">
+    <div id="flag-select-flags" class="flag-select-flags"></div>
+  </div>
+</div>
+'''
+
+FLAG_SELECTOR_CSS = r'''
+.flag-selector {
+  position: relative;
+  width: 100%;
+  font-family: var(--st-font);
+  z-index: 1000;
+}
+.flag-select-button {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .35rem .55rem;
+  border: 1px solid var(--st-border-color);
+  border-radius: .5rem;
+  background: var(--st-secondary-background-color);
+  color: var(--st-text-color);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.flag-select-button:hover {
+  border-color: var(--st-primary-color);
+}
+.flag-select-chosen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  min-width: 0;
+}
+.flag-select-chosen img {
+  width: 28px;
+  height: 19px;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+  flex: 0 0 auto;
+}
+.flag-placeholder {
+  color: var(--st-secondary-text-color);
+  font-size: .92rem;
+}
+.flag-more {
+  font-size: .8rem;
+  color: var(--st-secondary-text-color);
+  white-space: nowrap;
+}
+.flag-select-chevron {
+  font-size: 1rem;
+  opacity: .75;
+}
+.flag-select-clear {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1.05rem;
+  opacity: .65;
+  cursor: pointer;
+}
+.flag-select-clear:hover {
+  opacity: 1;
+  background: rgba(128,128,128,.15);
+}
+.flag-select-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  display: none;
+  padding: .55rem;
+  border: 1px solid var(--st-border-color);
+  border-radius: .55rem;
+  background: var(--st-background-color);
+  box-shadow: 0 8px 24px rgba(0,0,0,.16);
+  max-height: 245px;
+  overflow-y: auto;
+  z-index: 99999;
+}
+.flag-select-panel.open {
+  display: block;
+}
+.flag-select-flags {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: .35rem;
+}
+.flag-option {
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: .35rem;
+  background: transparent;
+  cursor: pointer;
+  padding: 3px;
+}
+.flag-option:hover, .flag-option.selected {
+  border-color: var(--st-primary-color);
+  background: color-mix(in srgb, var(--st-primary-color) 12%, transparent);
+}
+.flag-option img {
+  width: 34px;
+  height: 23px;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+}
+@media (max-width: 768px) {
+  .flag-select-flags {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .flag-option img {
+    width: 32px;
+    height: 22px;
+  }
+}
+'''
+
+flag_component = st.components.v2.component(
+    name="pais_selector_banderas_reales",
+    html=FLAG_SELECTOR_HTML,
+    css=FLAG_SELECTOR_CSS,
+    js=FLAG_SELECTOR_JS,
 )
 
+opciones_flags = [
+    {"code": codigo, "label": CODIGO_PAIS.get(codigo, codigo)}
+    for codigo in TODOS_CODIGOS
+]
+seleccion_inicial = [PAISES_CODIGOS[p] for p in st.session_state["f_paises"] if p in PAISES_CODIGOS]
+
+with st.sidebar:
+    st.markdown("**Países**")
+    resultado_flags = flag_component(
+        data={"options": opciones_flags, "selected": seleccion_inicial},
+        default={"selected": seleccion_inicial},
+        on_selected_change=lambda: None,
+        key="selector_paises_banderas",
+        width="stretch",
+        height=48,
+    )
+
+seleccion_codigos = getattr(resultado_flags, "selected", None)
+if seleccion_codigos is None:
+    seleccion_codigos = seleccion_inicial
+
+paises_sel = [CODIGO_PAIS[c] for c in seleccion_codigos if c in CODIGO_PAIS]
+st.session_state["f_paises"] = paises_sel
 top_n = st.sidebar.slider("Top países por derivado", 3, 15, key="f_top")
 cuota_min = st.sidebar.slider("Cuota mínima (%)", 0, 30, key="f_cuota")
 metrica = st.sidebar.radio("Mostrar como", list(METRICAS), key="f_metrica")
