@@ -60,14 +60,6 @@ st.markdown("""
         font-size: clamp(1.05rem, 5vw, 1.65rem) !important;
     }
 
-    /* Selector visual de banderas */
-    [data-testid="stButton"] button {
-        min-height: 2.65rem;
-        padding: .2rem .25rem;
-        font-size: 1.45rem;
-        border-radius: .65rem;
-    }
-
     /* Pestañas cómodas para tocar con el dedo */
 
     button[data-baseweb="tab"] {
@@ -307,42 +299,15 @@ st.sidebar.button("Actualizar datos ahora", on_click=st.cache_data.clear)
 
 usos_sel = st.sidebar.multiselect("Uso (vacío = todos)", CATEGORIAS, key="f_usos")
 deriv_sel = st.sidebar.multiselect("Derivados", TODOS_DERIV, key="f_deriv")
-# Selector visual de países: solo muestra las banderas.
-st.subheader("🌍 Países")
-
-ac1, ac2 = st.columns(2)
-with ac1:
-    if st.button("Todos", key="pais_todos", use_container_width=True):
-        st.session_state["f_paises"] = TODOS_PAISES.copy()
-        st.rerun()
-with ac2:
-    if st.button("Ninguno", key="pais_ninguno", use_container_width=True):
-        st.session_state["f_paises"] = []
-        st.rerun()
-
-# Banderas grandes y tocables. El nombre solo aparece como ayuda al pulsar/mantener.
-pais_cols = st.columns(7, gap="small")
-for i, pais in enumerate(TODOS_PAISES):
-    codigo = CODIGOS_PAIS.get(pais, "")
-    flag = bandera(codigo)
-    seleccionado = pais in st.session_state["f_paises"]
-
-    with pais_cols[i % 7]:
-        if st.button(
-            flag,
-            key=f"pais_flag_{codigo}_{i}",
-            help=pais,
-            type="primary" if seleccionado else "secondary",
-            use_container_width=True,
-        ):
-            if seleccionado:
-                st.session_state["f_paises"].remove(pais)
-            else:
-                st.session_state["f_paises"].append(pais)
-            st.rerun()
-
-paises_sel = st.session_state["f_paises"]
-st.caption(f"{len(paises_sel)} de {len(TODOS_PAISES)} países seleccionados")
+# Filtro desplegable de países.
+# El valor interno sigue siendo el nombre del país, pero el usuario ve
+# únicamente la bandera en el desplegable y en las opciones seleccionadas.
+paises_sel = st.sidebar.multiselect(
+    "Países",
+    TODOS_PAISES,
+    key="f_paises",
+    format_func=lambda pais: bandera(CODIGOS_PAIS.get(pais, "")),
+)
 
 top_n = st.sidebar.slider("Top países por derivado", 3, 15, key="f_top")
 cuota_min = st.sidebar.slider("Cuota mínima (%)", 0, 30, key="f_cuota")
