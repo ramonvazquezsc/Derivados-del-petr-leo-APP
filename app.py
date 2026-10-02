@@ -157,6 +157,14 @@ METRICAS = {
 }
 
 
+
+def bandera(codigo):
+    """Convierte un código ISO de país de 2 letras en emoji de bandera."""
+    codigo = str(codigo).strip().upper()
+    if len(codigo) != 2 or not codigo.isalpha():
+        return "🌐"
+    return "".join(chr(127397 + ord(c)) for c in codigo)
+
 def buscar(df, *claves):
     for c in df.columns:
         if any(k in c.lower() for k in claves):
