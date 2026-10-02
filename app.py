@@ -367,7 +367,7 @@ export default function({ parentElement, data, setStateValue }) {
             return;
         }
 
-        const visible = selected.slice(0, 7);
+        const visible = selected.slice(0, 5);
         for (const code of visible) {
             const img = document.createElement("img");
             img.src = flagUrl(code);
@@ -438,7 +438,7 @@ FLAG_SELECTOR_CSS = r'''
 }
 .flag-select-button {
   width: 100%;
-  min-height: 42px;
+  min-height: 54px;
   display: flex;
   align-items: center;
   gap: .35rem;
@@ -498,11 +498,10 @@ FLAG_SELECTOR_CSS = r'''
   background: rgba(128,128,128,.15);
 }
 .flag-select-panel {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
+  position: static;
   display: none;
+  width: 100%;
+  margin-top: 6px;
   padding: .55rem;
   border: 1px solid var(--st-border-color);
   border-radius: .55rem;
@@ -510,7 +509,7 @@ FLAG_SELECTOR_CSS = r'''
   box-shadow: 0 8px 24px rgba(0,0,0,.16);
   max-height: 245px;
   overflow-y: auto;
-  z-index: 99999;
+  z-index: 10;
 }
 .flag-select-panel.open {
   display: block;
@@ -575,7 +574,7 @@ with st.sidebar:
         on_selected_change=lambda: None,
         key="selector_paises_banderas",
         width="stretch",
-        height=48,
+        height="content",
     )
 
 seleccion_codigos = getattr(resultado_flags, "selected", None)
