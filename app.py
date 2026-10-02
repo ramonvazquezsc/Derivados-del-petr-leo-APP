@@ -390,27 +390,33 @@ export default function({ parentElement, data, setStateValue }) {
         }
     }
 
-    button.onclick = () => {
-        const open = panel.classList.toggle("open");
+    function togglePanel(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const open = !panel.classList.contains("open");
+        panel.classList.toggle("open", open);
         button.setAttribute("aria-expanded", open ? "true" : "false");
-    };
+    }
 
-    clear.onclick = (event) => {
+    button.addEventListener("click", togglePanel);
+
+    clear.addEventListener("click", (event) => {
+        event.preventDefault();
         event.stopPropagation();
         selected = [];
         render();
-        setStateValue("selected", selected);
-    };
-
-    document.addEventListener("click", (event) => {
-        if (!root.contains(event.target)) {
-            panel.classList.remove("open");
-            button.setAttribute("aria-expanded", "false");
-        }
+        setStateValue("selected", []);
     });
 
-    syncFromPython();
+    // Cerrar solo al pulsar fuera del componente, sin depender de un listener
+    // global del documento (que puede ser problemático dentro del Shadow DOM).
+    root.addEventListener("click", (event) => {
+        event.stopPropagation();
+    });
+
     render();
+
+    syncFromPython();
 
     return () => {};
 }
@@ -498,7 +504,9 @@ FLAG_SELECTOR_CSS = r'''
   background: rgba(128,128,128,.15);
 }
 .flag-select-panel {
-  position: static;
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
   display: none;
   width: 100%;
   margin-top: 6px;
@@ -509,7 +517,7 @@ FLAG_SELECTOR_CSS = r'''
   box-shadow: 0 8px 24px rgba(0,0,0,.16);
   max-height: 245px;
   overflow-y: auto;
-  z-index: 10;
+  z-index: 9999;
 }
 .flag-select-panel.open {
   display: block;
@@ -574,7 +582,7 @@ with st.sidebar:
         on_selected_change=lambda: None,
         key="selector_paises_banderas",
         width="stretch",
-        height="content",
+        height=330,
     )
 
 seleccion_codigos = getattr(resultado_flags, "selected", None)
