@@ -6,7 +6,94 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="Derivados del petróleo", page_icon="🛢️", layout="wide")
+st.set_page_config(
+    page_title="Derivados del petróleo",
+    page_icon="🛢️",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+# ---------------------------------------------------------------------------
+# Estilos responsive: en móvil reducimos márgenes, títulos, tarjetas y
+# hacemos que los gráficos ocupen siempre el ancho disponible.
+# ---------------------------------------------------------------------------
+st.markdown("""
+<style>
+    /* Menos aire lateral en pantallas pequeñas */
+    .block-container {
+        padding-top: 1.2rem;
+        padding-bottom: 2rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+        max-width: 1500px;
+    }
+
+    h1 {
+        font-size: clamp(1.65rem, 6vw, 2.4rem) !important;
+        line-height: 1.1 !important;
+        margin-bottom: .35rem !important;
+    }
+
+    h2, h3 {
+        line-height: 1.15 !important;
+    }
+
+    /* Que los gráficos no provoquen scroll horizontal */
+    .stPlotlyChart, .js-plotly-plot, .plot-container {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Métricas más compactas */
+    [data-testid="stMetric"] {
+        padding: .65rem .75rem;
+        border: 1px solid rgba(128,128,128,.20);
+        border-radius: .75rem;
+        background: rgba(128,128,128,.06);
+    }
+
+    [data-testid="stMetricLabel"] {
+        font-size: .78rem !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: clamp(1.05rem, 5vw, 1.65rem) !important;
+    }
+
+    /* Pestañas cómodas para tocar con el dedo */
+    button[data-baseweb="tab"] {
+        padding-left: .7rem;
+        padding-right: .7rem;
+    }
+
+    /* Tabla: mantenerla dentro de la pantalla */
+    [data-testid="stDataFrame"] {
+        max-width: 100%;
+    }
+
+    /* En móvil las columnas se apilan */
+    @media (max-width: 768px) {
+        .block-container {
+            padding-left: .65rem;
+            padding-right: .65rem;
+            padding-top: .8rem;
+        }
+
+        [data-testid="stMetric"] {
+            margin-bottom: .35rem;
+        }
+
+        .stCaption {
+            font-size: .78rem;
+        }
+
+        /* Evita que textos largos rompan el ancho */
+        p, label, [data-testid="stMarkdownContainer"] {
+            overflow-wrap: anywhere;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
 
 BASE = "https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/secondary/"
 CACHE_DIR = "cache_jodi"
@@ -148,7 +235,8 @@ def cargar():
 
 df, info, diag = cargar()
 
-st.title("Derivados del petróleo")
+st.title("🛢️ Derivados del petróleo")
+st.caption("Consumo mundial por país y producto · Optimizado para móvil")
 
 if df is None:
     st.error(info)
@@ -185,7 +273,8 @@ st.session_state["f_deriv"] = [x for x in st.session_state["f_deriv"] if x in TO
 st.session_state["f_paises"] = [x for x in st.session_state["f_paises"] if x in TODOS_PAISES]
 
 # ---------- Filtros ----------
-st.sidebar.header("Filtros")
+st.sidebar.header("🔎 Filtros")
+st.sidebar.caption("Abre este panel con la flecha ☰ cuando quieras cambiar la selección.")
 st.sidebar.button("Restablecer filtros", on_click=reset)
 st.sidebar.button("Actualizar datos ahora", on_click=st.cache_data.clear)
 
@@ -217,7 +306,7 @@ st.sidebar.caption(f"{dff['Derivado'].nunique()} derivados · {dff['País'].nuni
 
 # ---------- Indicadores ----------
 total_pais = dff.groupby("País")["mbd"].sum().sort_values(ascending=False)
-k1, k2, k3, k4 = st.columns(4)
+k1, k2, k3, k4 = st.columns(4, gap="small")
 k1.metric("Derivados", dff["Derivado"].nunique())
 k2.metric("Países", dff["País"].nunique())
 k3.metric("Consumo filtrado", f"~{dff['mbd'].sum():.1f} mb/d")
@@ -231,40 +320,43 @@ with tab1:
     orden = total_pais.sort_values().index.tolist()
     fig = px.bar(dff, x="mbd", y="País", color="Derivado", orientation="h",
                  category_orders={"País": orden})
-    fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=500,
+    fig.update_layout(margin=dict(l=4, r=8, t=10, b=4), height=430,
                       xaxis_title="mb/d", yaxis_title=None)
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False, "responsive": True})
     st.caption("Esta vista usa siempre mb/d, porque es la unidad que se puede sumar entre derivados.")
 
 with tab2:
     con_datos = set(dff["Derivado"])
     presentes = [p for p in derivados_activos if p in con_datos]
-    cols = st.columns(2)
-    for i, p in enumerate(presentes):
+    for p in presentes:
         sub = dff[dff["Derivado"] == p].sort_values(col)
-        with cols[i % 2]:
+        with st.container(border=True):
             st.subheader(p)
             st.caption(f"~{vol[p]:.1f} mb/d en los países que reportan · "
                        f"~{vol[p] / vol.sum() * 100:.0f}% del total de derivados")
             st.markdown("**Usos:** " + " · ".join(INFO[p][1]))
             fig = px.bar(sub, x=col, y="País", orientation="h", text=col)
             fig.update_traces(marker_color="#2a78d6", textposition="outside")
-            fig.update_layout(margin=dict(l=0, r=20, t=10, b=0), height=320,
+            fig.update_layout(margin=dict(l=4, r=8, t=10, b=4), height=330,
                               xaxis_title=etiqueta, yaxis_title=None)
-            st.plotly_chart(fig)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
 with tab3:
     st.subheader(f"Derivados por país ({etiqueta})")
     pivot = dff.pivot_table(index="País", columns="Derivado", values=col, aggfunc="sum")
     fig = px.imshow(pivot, text_auto=True, aspect="auto",
                     color_continuous_scale="Blues", labels=dict(color=etiqueta))
-    fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=500)
-    st.plotly_chart(fig)
+    fig.update_layout(
+        margin=dict(l=4, r=8, t=10, b=4),
+        height=500,
+        font=dict(size=10),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
 with tab4:
     st.subheader("Datos filtrados")
     tabla = dff.rename(columns={"cuota": "% del consumo", "mbd": "mb/d", "puesto": "Puesto"})
-    st.dataframe(tabla, hide_index=True)
+    st.dataframe(tabla, hide_index=True, use_container_width=True, height=420)
     st.download_button("Descargar CSV", tabla.to_csv(index=False).encode("utf-8-sig"),
                        file_name="derivados_petroleo.csv", mime="text/csv")
 
