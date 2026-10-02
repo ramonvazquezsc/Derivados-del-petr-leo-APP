@@ -224,13 +224,17 @@ def cargar():
     m = d.groupby(["area", "prod"], as_index=False).agg(kbd=("valor", "mean"))
 
     m["Derivado"] = m["prod"].map(PRODUCTOS)
+    m["Código"] = m["area"].astype(str).str[:2].str.upper()
     m["País"] = m["area"].map(PAISES).fillna(m["area"])
+    m["País con bandera"] = m.apply(
+        lambda r: f"{bandera(r['Código'])} {r['País']}", axis=1
+    )
     m["mbd"] = (m["kbd"] / 1000).round(3)
     m["cuota"] = (m["mbd"] / m.groupby("Derivado")["mbd"].transform("sum") * 100).round(1)
     m["puesto"] = m.groupby("Derivado")["mbd"].rank(ascending=False, method="first").astype(int)
 
     info = f"Último mes en la base: {fmax:%m/%Y} · descargado el {datetime.now():%d/%m/%Y %H:%M}"
-    return m[["Derivado", "País", "mbd", "cuota", "puesto"]], info, diag
+    return m[["Derivado", "País", "Código", "País con bandera", "mbd", "cuota", "puesto"]], info, diag
 
 
 df, info, diag = cargar()
@@ -335,7 +339,7 @@ with tab2:
             st.caption(f"~{vol[p]:.1f} mb/d en los países que reportan · "
                        f"~{vol[p] / vol.sum() * 100:.0f}% del total de derivados")
             st.markdown("**Usos:** " + " · ".join(INFO[p][1]))
-            fig = px.bar(sub, x=col, y="País", orientation="h", text=col)
+            fig = px.bar(sub, x=col, y="País con bandera", orientation="h", text=col)
             fig.update_traces(marker_color="#2a78d6", textposition="outside")
             fig.update_layout(margin=dict(l=4, r=8, t=10, b=4), height=330,
                               xaxis_title=etiqueta, yaxis_title=None)
@@ -343,7 +347,7 @@ with tab2:
 
 with tab3:
     st.subheader(f"Derivados por país ({etiqueta})")
-    pivot = dff.pivot_table(index="País", columns="Derivado", values=col, aggfunc="sum")
+    pivot = dff.pivot_table(index="País con bandera", columns="Derivado", values=col, aggfunc="sum")
     fig = px.imshow(pivot, text_auto=True, aspect="auto",
                     color_continuous_scale="Blues", labels=dict(color=etiqueta))
     fig.update_layout(
@@ -355,7 +359,9 @@ with tab3:
 
 with tab4:
     st.subheader("Datos filtrados")
-    tabla = dff.rename(columns={"cuota": "% del consumo", "mbd": "mb/d", "puesto": "Puesto"})
+    tabla = dff.drop(columns=["Código", "País con bandera"], errors="ignore").rename(
+        columns={"cuota": "% del consumo", "mbd": "mb/d", "puesto": "Puesto"}
+    )
     st.dataframe(tabla, hide_index=True, use_container_width=True, height=420)
     st.download_button("Descargar CSV", tabla.to_csv(index=False).encode("utf-8-sig"),
                        file_name="derivados_petroleo.csv", mime="text/csv")
